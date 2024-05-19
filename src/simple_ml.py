@@ -20,7 +20,7 @@ def add(x, y):
         Sum of x + y
     """
     ### BEGIN YOUR CODE
-    pass
+    return x + y
     ### END YOUR CODE
 
 
@@ -48,8 +48,31 @@ def parse_mnist(image_filename, label_filename):
                 for MNIST will contain the values 0-9.
     """
     ### BEGIN YOUR CODE
-    pass
+    with gzip.open(image_filename, 'r') as f:
+        _ = int.from_bytes(f.read(4), 'big')
+        num_items =  int.from_bytes(f.read(4), 'big')
+        num_row = int.from_bytes(f.read(4), 'big')
+        num_col = int.from_bytes(f.read(4), 'big')
+
+        image_buffer = f.read(num_items * num_row * num_col)
+        imgs = np.frombuffer(image_buffer, dtype=np.uint8).astype(np.float32).reshape(num_items, num_row * num_col)
+        imgs /= 255.0
+        # for debugging
+        # visualizer_helper(imgs[0])
+
+    with gzip.open(label_filename, 'r') as f:
+        _ = int.from_bytes(f.read(4), 'big')
+        num_items =  int.from_bytes(f.read(4), 'big')
+        label_buffer = f.read(num_items)
+        labels = np.frombuffer(label_buffer, dtype=np.uint8)
+    return (imgs, labels)
     ### END YOUR CODE
+
+
+def visualizer_helper(img):
+    import matplotlib.pyplot as plt
+    plt.imshow(img, cmap='gray')
+    plt.show()
 
 
 def softmax_loss(Z, y):
@@ -68,8 +91,10 @@ def softmax_loss(Z, y):
         Average softmax loss over the sample.
     """
     ### BEGIN YOUR CODE
-    pass
+    log_sum_exp = np.log(np.sum(np.exp(Z), axis=1))
+    loss = -Z[np.arange(y.shape[0]), y] + log_sum_exp
     ### END YOUR CODE
+    return np.mean(loss)
 
 
 def softmax_regression_epoch(X, y, theta, lr = 0.1, batch=100):
@@ -91,8 +116,23 @@ def softmax_regression_epoch(X, y, theta, lr = 0.1, batch=100):
         None
     """
     ### BEGIN YOUR CODE
-    pass
+    def update_gradient(X, y, theta, lr, batch):
+        logit = np.exp(np.matmul(X,theta))
+        z = logit / np.sum(logit, axis=1, keepdims=True)
+        grad = np.matmul(X.T, (z - OneHot(y, theta.shape[1])))
+        theta -= lr * grad / batch
+    iter = X.shape[0] // batch
+    for i in range(iter):
+        Xi, yi = X[batch*i:batch*(i+1)], y[batch*i:batch*(i+1)]
+        update_gradient(Xi, yi, theta, lr, batch)
+    update_gradient(X[batch*iter:], y[batch*iter:], theta, lr, batch)
+
     ### END YOUR CODE
+
+def OneHot(x, num_label=10):
+    one_hot = np.zeros((x.shape[0], num_label), dtype=np.int8)
+    np.put_along_axis(one_hot, np.expand_dims(x, axis=1), 1, axis=1)
+    return one_hot
 
 
 def nn_epoch(X, y, W1, W2, lr = 0.1, batch=100):
@@ -118,10 +158,30 @@ def nn_epoch(X, y, W1, W2, lr = 0.1, batch=100):
         None
     """
     ### BEGIN YOUR CODE
-    pass
+    def update_gradient(X, y, W1, W2, lr, batch):
+        Z1 = ReLU(np.matmul(X, W1)) # num_examples X hidden_dim
+        G2 = Softmax(np.matmul(Z1, W2)) - OneHot(y, W2.shape[1]) 
+        G1 = np.where(Z1>0, 1, 0)*(np.matmul(G2,W2.T))
+        W1_grad = 1/batch * np.matmul(X.T, G1)
+        W2_grad = 1/batch * np.matmul(Z1.T, G2)
+        W1 -= lr * W1_grad
+        W2 -= lr * W2_grad
+
+    iter = X.shape[0] // batch
+    for i in range(iter):
+        Xi, yi = X[batch*i:batch*(i+1)], y[batch*i:batch*(i+1)]
+        update_gradient(Xi, yi, W1, W2, lr, batch)
+    update_gradient(X[batch*iter:], y[batch*iter:], W1, W2, lr, batch)
+
+
     ### END YOUR CODE
 
+def ReLU(x):
+    return np.where(x>=0, x, 0)
 
+def Softmax(X):
+    ex = np.exp(X)
+    return ex / np.sum(ex, axis=1, keepdims=True)
 
 ### CODE BELOW IS FOR ILLUSTRATION, YOU DO NOT NEED TO EDIT
 
@@ -175,3 +235,4 @@ if __name__ == "__main__":
 
     print("\nTraining two layer neural network w/ 100 hidden units")
     train_nn(X_tr, y_tr, X_te, y_te, hidden_dim=100, epochs=20, lr = 0.2)
+
